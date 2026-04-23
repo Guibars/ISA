@@ -1,0 +1,8 @@
+{
+  "name": "ISA",
+  "description": "",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}

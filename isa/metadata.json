@@ -1,6 +1,6 @@
 {
-  "name": "ISA",
-  "description": "",
+  "name": "ISA INTELIGENCIA ARTIFICIAL",
+  "description": "Assistente técnica virtual focada em produtos da FOTUS Distribuidora Solar.",
   "requestFramePermissions": [
     "microphone"
   ],

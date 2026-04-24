@@ -50,6 +50,29 @@ export default function ChatScreen() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (!scrollContainerRef.current) return;
+    setIsDragging(true);
+    setStartX(e.pageX - scrollContainerRef.current.offsetLeft);
+    setScrollLeft(scrollContainerRef.current.scrollLeft);
+  };
+
+  const onMouseLeave = () => setIsDragging(false);
+  const onMouseUp = () => setIsDragging(false);
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !scrollContainerRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollContainerRef.current.offsetLeft;
+    const walk = (x - startX) * 1.5;
+    scrollContainerRef.current.scrollLeft = scrollLeft - walk;
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -97,17 +120,31 @@ export default function ChatScreen() {
            }
         } as any);
 
-        const response = await ai.models.generateContent({
+        const responseStream = await ai.models.generateContentStream({
            model: 'gemini-3.1-pro-preview',
            contents: contents,
         });
 
-        setMessages(prev => [...prev, { role: 'model', content: response.text || '' }]);
+        setMessages(prev => [...prev, { role: 'model', content: '' }]);
+        for await (const chunk of responseStream) {
+           setMessages(prev => {
+              const newMsgs = [...prev];
+              newMsgs[newMsgs.length - 1].content += chunk.text;
+              return newMsgs;
+           });
+        }
         
       } else {
         const chat = getChatSession();
-        const response = await chat.sendMessage({ message: userMessage });
-        setMessages(prev => [...prev, { role: 'model', content: response.text || '' }]);
+        const responseStream = await chat.sendMessageStream({ message: userMessage });
+        setMessages(prev => [...prev, { role: 'model', content: '' }]);
+        for await (const chunk of responseStream) {
+           setMessages(prev => {
+              const newMsgs = [...prev];
+              newMsgs[newMsgs.length - 1].content += chunk.text;
+              return newMsgs;
+           });
+        }
       }
     } catch (e) {
       console.error(e);
@@ -156,8 +193,16 @@ export default function ChatScreen() {
     }
   };
 
+  const isActiveView = isLiveMode || isTyping || isIsaSpeaking;
+  const activeMessageContent = (isTyping || isLiveMode) && messages.length > 0 && messages[messages.length - 1].role === 'model' ? messages[messages.length - 1].content : '';
+
   return (
-    <div className="flex flex-col h-full relative w-full">
+    <div className="flex flex-col h-full relative w-full overflow-hidden">
+      <div className={`ai-edge-particles ${isActiveView ? 'active' : ''}`}>
+        <div className="ai-edge-inner-1"></div>
+        <div className="ai-edge-inner-2"></div>
+      </div>
+
       {isGalleryOpen && (
         <div className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center p-4">
           <div className="bg-[#080B10]/90 border border-white/10 shadow-2xl rounded-[32px] w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -190,6 +235,9 @@ export default function ChatScreen() {
                 >
                   <option value="Todas">Marcas</option>
                   <option value="CCM">CCM</option>
+                  <option value="Solar Group">Solar Group</option>
+                  <option value="Pratyc">Pratyc</option>
+                  <option value="Solar A+">Solar A+</option>
                 </select>
                 <select 
                   value={galleryCategory}
@@ -198,6 +246,7 @@ export default function ChatScreen() {
                 >
                   <option value="Todas">Categorias</option>
                   <option value="Fibrocimento">Fibrocimento</option>
+                  <option value="Fibrometal">Fibrometal</option>
                 </select>
               </div>
             </div>
@@ -211,7 +260,10 @@ export default function ChatScreen() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
                   {filteredGallery.map(part => (
                     <div key={part.id} className="liquid-glass-depth rounded-2xl overflow-hidden group border border-white/5 hover:border-white/20 transition-all hover:-translate-y-1 cursor-pointer">
-                      <div className="h-48 w-full bg-white/5 p-4 flex items-center justify-center">
+                      <div className="h-48 w-full bg-white/5 p-4 flex items-center justify-center relative">
+                        {part.brandLogo && (
+                          <img src={part.brandLogo} alt={part.brand} className="absolute top-3 right-3 w-8 h-8 md:w-10 md:h-10 object-contain opacity-50 drop-shadow-md z-10" />
+                        )}
                         <img src={part.imageUrl} alt={part.name} className="max-h-full max-w-full object-contain drop-shadow-xl group-hover:scale-105 transition-transform duration-500" />
                       </div>
                       <div className="p-4">
@@ -230,7 +282,7 @@ export default function ChatScreen() {
         </div>
       )}
 
-      {(messages.length > 0 || isLiveMode) && (
+      {(messages.length > 0 || isLiveMode) && !isActiveView && (
         <button 
           onClick={resetChat}
           className="liquid-glass-pill rounded-full absolute top-4 left-4 md:top-8 md:left-8 z-50 p-2.5 md:p-3 text-white/70 hover:text-white animate-in fade-in"
@@ -239,141 +291,173 @@ export default function ChatScreen() {
           <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
         </button>
       )}
-      <div className={`transition-all duration-1000 ease-out flex flex-col items-center justify-center ${messages.length === 0 && !isLiveMode ? 'flex-1' : 'mt-4 md:mt-8 h-20 md:h-32 shrink-0'}`}>
-        <div className={`relative transition-all duration-1000 flex items-center justify-center ${messages.length === 0 && !isLiveMode ? 'w-32 h-32 md:w-48 md:h-48 mb-8 md:mb-12' : 'w-20 h-20 md:w-28 md:h-28'}`}>
-            {(messages.length === 0 && !isLiveMode) ? (
-               <img 
-                 src="https://res.cloudinary.com/dsctpzqvy/image/upload/v1776894302/I_1_jmecmo.png" 
-                 className="w-full h-full object-contain drop-shadow-[0_0_40px_rgba(250,181,21,0.2)] animate-float" 
-                 alt="ISA Logo" 
-               />
-            ) : (
-               <IsaSphere 
-                 isSpeaking={isIsaSpeaking || (!isLiveMode && messages.length > 0 && messages[messages.length-1]?.role === 'model' && !isTyping)} 
-                 isListening={isLiveMode && !isIsaSpeaking} 
-                 isThinking={isTyping}
-               />
-            )}
-        </div>
+
+      {/* Active Modal Overlay */}
+      <div 
+         className={`absolute inset-0 z-50 pointer-events-none flex flex-col items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] ${isActiveView ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}
+      >
+         <div className="w-64 h-64 md:w-96 md:h-96 relative flex items-center justify-center mb-8 pointer-events-auto">
+           <IsaSphere 
+             isSpeaking={isIsaSpeaking || (isTyping && messages.length > 0 && messages[messages.length - 1].role === 'model')} 
+             isListening={isLiveMode && !isIsaSpeaking} 
+             isThinking={isTyping && !(messages.length > 0 && messages[messages.length - 1].role === 'model')}
+           />
+         </div>
+         
+         <div className="max-w-3xl text-center z-20 min-h-[100px] flex flex-col items-center justify-center pointer-events-auto">
+           {isLiveMode && !isIsaSpeaking && !activeMessageContent && (
+              <p className="text-white/60 text-lg md:text-xl font-medium animate-pulse mb-8">Pode falar, estou ouvindo...</p>
+           )}
+           
+           {activeMessageContent && (
+              <div className="prose prose-invert prose-lg md:prose-2xl max-w-none text-white/90 font-medium leading-relaxed drop-shadow-md">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                   {activeMessageContent}
+                </ReactMarkdown>
+              </div>
+           )}
+
+           {isLiveMode && (
+              <button 
+                onClick={handleMicClick}
+                className="mt-12 w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/5 border border-white/10 hover:border-red-500/50 flex items-center justify-center hover:bg-red-500/20 transition-all shadow-xl hover:shadow-[0_0_30px_rgba(239,68,68,0.3)] group"
+               >
+                 <Square className="w-6 h-6 md:w-8 md:h-8 text-white/50 group-hover:text-red-500 fill-current transition-colors" />
+              </button>
+           )}
+         </div>
       </div>
 
-      {(messages.length > 0 || isLiveMode) && (
-        <div className="flex-1 overflow-y-auto w-full px-4 md:px-8 pb-4 scrollbar-hide" style={{ maskImage: 'linear-gradient(to bottom, transparent 0%, black 5%, black 100%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 5%, black 100%)' }}>
-          <div className="max-w-4xl mx-auto w-full space-y-6 pt-4">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div 
-                  className={`max-w-[85%] md:max-w-[75%] p-5 rounded-[28px] transition-transform hover:-translate-y-0.5 animate-in fade-in slide-in-from-bottom-2 ${
-                    msg.role === 'user' 
-                      ? 'liquid-glass rounded-br-[8px] text-white' 
-                      : 'liquid-glass-depth rounded-bl-[8px] text-white/95'
-                  }`}
-                >
-                  {msg.attachments && msg.attachments.length > 0 && (
-                     <div className="mb-3 flex flex-wrap gap-2">
-                       {msg.attachments.map((url, idx) => (
-                          <img key={idx} src={url} alt="Uploaded" className="max-w-full h-auto rounded-xl max-h-64 md:max-h-80 object-cover border border-white/20" />
-                       ))}
-                     </div>
-                  )}
-                  {msg.content && (
-                     <div className="prose prose-invert prose-sm md:prose-base max-w-none">
-                       <ReactMarkdown 
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            img: ({node, ...props}) => (
-                              <span className="flex justify-center my-6 w-full">
-                                <img 
-                                  className="liquid-glass-pill rounded-2xl max-w-full drop-shadow-2xl border border-white/10 p-2 bg-white/5 object-contain max-h-[300px]" 
-                                  {...props} 
-                                />
-                              </span>
-                            ),
-                            a: ({node, ...props}) => (
-                              <a 
-                                {...props}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 px-5 py-3 mt-4 mb-2 font-medium text-white/90 no-underline liquid-glass-pill rounded-xl border border-white/10 hover:border-white/30 hover:-translate-y-1 transition-all shadow-lg group"
-                              >
-                                <div className="bg-[#fab515] p-1.5 rounded-lg text-[#080B10] group-hover:scale-110 transition-transform">
-                                  <FileDown className="w-4 h-4" />
-                                </div>
-                                <span>{props.children}</span>
-                              </a>
-                            )
-                          }}
-                       >
-                          {msg.content}
-                       </ReactMarkdown>
-                     </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            {isTyping && (
-               <div className="flex justify-start">
-                 <div className="liquid-glass-depth p-4 rounded-[28px] rounded-bl-[8px] flex items-center justify-center">
-                   <Loader2 className="w-5 h-5 text-white/50 animate-spin" />
-                 </div>
-               </div>
-            )}
-            <div ref={messagesEndRef} className="h-4" />
+      {/* Main Background Container */}
+      <div 
+        className={`flex flex-col flex-1 w-full h-full relative transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] transform origin-bottom ${
+          isActiveView ? 'scale-[0.93] -translate-y-4 opacity-20 blur-[2px] pointer-events-none' : 'scale-100 translate-y-0 opacity-100 blur-none pointer-events-auto'
+        }`}
+      >
+        <div className={`transition-all duration-1000 ease-out flex flex-col items-center justify-center ${messages.length === 0 ? 'flex-1' : 'mt-4 md:mt-8 h-20 md:h-32 shrink-0'}`}>
+          <div className={`relative transition-all duration-1000 flex items-center justify-center ${messages.length === 0 ? 'w-32 h-32 md:w-48 md:h-48 mb-8 md:mb-12' : 'w-0 h-0 opacity-0 overflow-hidden'}`}>
+              <img 
+                src="https://res.cloudinary.com/dsctpzqvy/image/upload/v1776894302/I_1_jmecmo.png" 
+                className="w-full h-full object-contain drop-shadow-[0_0_40px_rgba(250,181,21,0.2)] animate-float" 
+                alt="ISA Logo" 
+              />
           </div>
         </div>
-      )}
 
-      <div className="w-full bg-gradient-to-t from-[#080B10] via-[#080B10]/95 to-transparent pb-safe pt-8">
-        {messages.length === 0 && !isLiveMode && (
-          <div className="max-w-4xl mx-auto w-full px-4 md:px-8 mb-4">
-            <div className="flex overflow-x-auto scrollbar-hide gap-2 md:gap-3 pb-2 -mx-4 px-4 md:mx-0 md:px-0">
-              {SUGGESTIONS.map((suggestion, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSend(suggestion)}
-                  className="liquid-glass-pill rounded-full whitespace-nowrap px-4 py-2 text-white/90 font-medium text-sm md:text-base shrink-0"
-                >
-                  {suggestion}
-                </button>
+        {(messages.length > 0) && (
+          <div className="flex-1 overflow-y-auto w-full px-4 md:px-8 pb-4 scrollbar-hide" style={{ maskImage: 'linear-gradient(to bottom, transparent 0%, black 5%, black 100%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 5%, black 100%)' }}>
+            <div className="max-w-4xl mx-auto w-full space-y-6 pt-4">
+              {messages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div 
+                    className={`max-w-[85%] md:max-w-[75%] p-5 rounded-[28px] transition-transform hover:-translate-y-0.5 animate-in fade-in slide-in-from-bottom-2 ${
+                      msg.role === 'user' 
+                        ? 'liquid-glass rounded-br-[8px] text-white' 
+                        : 'liquid-glass-depth rounded-bl-[8px] text-white/95'
+                    }`}
+                  >
+                    {msg.attachments && msg.attachments.length > 0 && (
+                       <div className="mb-3 flex flex-wrap gap-2">
+                         {msg.attachments.map((url, idx) => (
+                            <img key={idx} src={url} alt="Uploaded" className="max-w-full h-auto rounded-xl max-h-64 md:max-h-80 object-cover border border-white/20" />
+                         ))}
+                       </div>
+                    )}
+                    {msg.content && (
+                       <div className="prose prose-invert prose-sm md:prose-base max-w-none">
+                         <ReactMarkdown 
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              img: ({node, ...props}) => (
+                                <span className="flex justify-center my-6 w-full">
+                                  <img 
+                                    className="liquid-glass-pill rounded-2xl max-w-full drop-shadow-2xl border border-white/10 p-2 bg-white/5 object-contain max-h-[300px]" 
+                                    {...props} 
+                                  />
+                                </span>
+                              ),
+                              a: ({node, ...props}) => (
+                                <a 
+                                  {...props}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 px-5 py-3 mt-4 mb-2 font-medium text-white/90 no-underline liquid-glass-pill rounded-xl border border-white/10 hover:border-white/30 hover:-translate-y-1 transition-all shadow-lg group"
+                                >
+                                  <div className="bg-[#fab515] p-1.5 rounded-lg text-[#080B10] group-hover:scale-110 transition-transform">
+                                    <FileDown className="w-4 h-4" />
+                                  </div>
+                                  <span>{props.children}</span>
+                                </a>
+                              )
+                            }}
+                         >
+                            {msg.content}
+                         </ReactMarkdown>
+                       </div>
+                    )}
+                  </div>
+                </div>
               ))}
+              {isTyping && !isActiveView && (
+                 <div className="flex justify-start">
+                   <div className="liquid-glass-depth p-4 rounded-[28px] rounded-bl-[8px] flex items-center justify-center">
+                     <Loader2 className="w-5 h-5 text-white/50 animate-spin" />
+                   </div>
+                 </div>
+              )}
+              <div ref={messagesEndRef} className="h-4" />
             </div>
           </div>
         )}
 
-        <div className="max-w-4xl mx-auto w-full px-4 md:px-8 mb-4">
-          <input 
-              type="file" 
-              accept="image/*" 
-              className="hidden" 
-              ref={fileInputRef} 
-              onChange={handleImageSelect}
-          />
-          
-          {selectedImage && (
-            <div className="mb-3 flex items-center gap-3">
-               <div className="relative inline-block">
-                 <img src={selectedImage.previewUrl} alt="Preview" className="w-16 h-16 md:w-20 md:h-20 object-cover rounded-xl border-2 border-[#fab515]/50 shadow-lg" />
-                 <button 
-                   onClick={() => setSelectedImage(null)}
-                   className="absolute -top-2 -right-2 bg-[#0d518E] text-white rounded-full p-1 border border-white/20 shadow-[0_4px_12px_rgba(0,0,0,0.5)] hover:bg-white hover:text-[#0d518E] transition"
-                 >
-                   <X className="w-3 h-3 md:w-4 md:h-4" />
-                 </button>
-               </div>
+        <div className="w-full bg-gradient-to-t from-[#080B10] via-[#080B10]/95 to-transparent pb-safe pt-8">
+          {messages.length === 0 && (
+            <div className="max-w-4xl mx-auto w-full px-4 md:px-8 mb-4 overflow-hidden">
+              <div 
+                ref={scrollContainerRef}
+                onMouseDown={onMouseDown}
+                onMouseLeave={onMouseLeave}
+                onMouseUp={onMouseUp}
+                onMouseMove={onMouseMove}
+                style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+                className="flex overflow-x-auto scrollbar-hide gap-2 md:gap-3 pb-2 select-none"
+              >
+                {SUGGESTIONS.map((suggestion, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSend(suggestion)}
+                    className="liquid-glass-pill rounded-full whitespace-nowrap px-4 py-2 text-white/90 font-medium text-sm md:text-base shrink-0 border-transparent hover:border-white/10"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
-          {isLiveMode ? (
-             <div className="flex flex-col items-center justify-center py-6 md:py-8 liquid-glass-depth rounded-[32px]">
-                <p className="text-white/70 mb-4 animate-pulse text-sm md:text-base font-medium">ISA está ouvindo...</p>
-                <button 
-                  onClick={handleMicClick}
-                  className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-red-500/20 border border-red-500/50 flex items-center justify-center text-red-500 hover:bg-red-500/30 transition-colors shadow-[0_0_20px_rgba(239,68,68,0.3)] hover:shadow-[0_0_30px_rgba(239,68,68,0.5)]"
-                 >
-                   <Square className="w-6 h-6 md:w-8 md:h-8 fill-current" />
-                </button>
-             </div>
-          ) : (
+          <div className="max-w-4xl mx-auto w-full px-4 md:px-8 mb-4">
+            <input 
+                type="file" 
+                accept="image/*" 
+                className="hidden" 
+                ref={fileInputRef} 
+                onChange={handleImageSelect}
+            />
+            
+            {selectedImage && (
+              <div className="mb-3 flex items-center gap-3">
+                 <div className="relative inline-block">
+                   <img src={selectedImage.previewUrl} alt="Preview" className="w-16 h-16 md:w-20 md:h-20 object-cover rounded-xl border-2 border-[#fab515]/50 shadow-lg" />
+                   <button 
+                     onClick={() => setSelectedImage(null)}
+                     className="absolute -top-2 -right-2 bg-[#0d518E] text-white rounded-full p-1 border border-white/20 shadow-[0_4px_12px_rgba(0,0,0,0.5)] hover:bg-white hover:text-[#0d518E] transition"
+                   >
+                     <X className="w-3 h-3 md:w-4 md:h-4" />
+                   </button>
+                 </div>
+              </div>
+            )}
+
             <div className="liquid-glass-depth rounded-[32px] p-2 md:p-3 flex items-center gap-2">
               <button 
                   onClick={() => setIsGalleryOpen(true)}
@@ -413,7 +497,7 @@ export default function ChatScreen() {
                 </button>
               )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

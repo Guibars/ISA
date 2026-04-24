@@ -89,34 +89,24 @@ const LiquidMesh = ({ isSpeaking, isListening, isThinking }: IsaSphereProps) => 
 
   return (
     <group ref={groupRef}>
-      {/* Outer Frosted Liquid Glass */}
-      <Sphere ref={outerRef} args={[1.2, 64, 64]}>
-        <meshPhysicalMaterial 
-          transmission={1}
-          transparent={true}
-          roughness={0.35} // The magic for frosted blur!
-          thickness={3.5} 
-          ior={1.4} 
-          color="#ffffff" 
-          clearcoat={0.3}
-          clearcoatRoughness={0.1}
-          envMapIntensity={1}
-        />
+      {/* Core Dark Sphere for Depth */}
+      <Sphere args={[0.6, 64, 64]}>
+        <meshBasicMaterial color="#050510" />
       </Sphere>
 
-      {/* Inner Swirl 1 (Blue) */}
-      <Sphere ref={core1Ref} args={[0.7, 64, 64]}>
-        <MeshDistortMaterial ref={mat1Ref} color="#0D518E" emissive="#0D518E" emissiveIntensity={1.5} distort={0.5} speed={2} roughness={0.5} />
+      {/* Cyber/Fluid Wave 1 (Purple/Pink) */}
+      <Sphere ref={core1Ref} args={[1.0, 64, 64]}>
+        <MeshDistortMaterial ref={mat1Ref} color="#ff00cc" emissive="#a855f7" emissiveIntensity={2} distort={0.6} speed={2} wireframe={true} transparent opacity={0.6} />
       </Sphere>
 
-      {/* Inner Swirl 2 (Yellow) */}
-      <Sphere ref={core2Ref} args={[0.65, 64, 64]}>
-        <MeshDistortMaterial ref={mat2Ref} color="#FAB515" emissive="#FAB515" emissiveIntensity={2} distort={0.5} speed={2} roughness={0.5} />
+      {/* Cyber/Fluid Wave 2 (Cyan/Blue) */}
+      <Sphere ref={core2Ref} args={[0.9, 64, 64]}>
+        <MeshDistortMaterial ref={mat2Ref} color="#00ffcc" emissive="#3b82f6" emissiveIntensity={2} distort={0.5} speed={2.5} wireframe={true} transparent opacity={0.6} />
       </Sphere>
       
-      {/* Inner Swirl 3 (White/Cyan to bridge colors) */}
-      <Sphere ref={core3Ref} args={[0.5, 64, 64]}>
-        <MeshDistortMaterial ref={mat3Ref} color="#ffffff" emissive="#ffffff" emissiveIntensity={1.2} distort={0.6} speed={3} roughness={0.5} />
+      {/* Cyber/Fluid Wave 3 (Neon Green/Yellow) */}
+      <Sphere ref={core3Ref} args={[0.8, 64, 64]}>
+        <MeshDistortMaterial ref={mat3Ref} color="#00ff88" emissive="#eab308" emissiveIntensity={2} distort={0.7} speed={3} wireframe={true} transparent opacity={0.5} />
       </Sphere>
     </group>
   );
